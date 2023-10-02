@@ -25,6 +25,9 @@
 # For more explanation, check following blog posts:
 #   - https://www.ml4devs.com/articles/how-to-build-python-transcriber-using-mozilla-deepspeech/
 #   - https://www.ml4devs.com/articles/speech-recognition-with-python/
+import csv
+import random
+
 import deepspeech
 import numpy as np
 import pyaudio
@@ -38,6 +41,9 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 CHUNK_SIZE = 1024
+# search parameters
+PUNCTUATION = '''!()-[]{};:'"\, <>./?@#$%^&*_~'''
+INVERTED_INDEX = {}
 
 # Make DeepSpeech Model
 model = deepspeech.Model(model_path)
@@ -58,7 +64,43 @@ def process_audio(in_data, frame_count, time_info, status):
     if text != text_so_far:
         print('Interim text = {}'.format(text))
         text_so_far = text
-    return (in_data, pyaudio.paContinue)
+    return in_data, pyaudio.paContinue
+
+
+def process_text(text):
+    for ele in text:
+        if ele in PUNCTUATION:
+            text = text.replace(ele, " ")
+    text = text.lower()
+    text = text.split()
+    results = set()
+
+    # look for matching tags
+    for term in text:
+        if term in INVERTED_INDEX:
+            if not results:
+                results.update(INVERTED_INDEX[term])
+            else:
+                results = results.union(INVERTED_INDEX[term])
+                continue
+
+    if not results:
+        values = []
+        for location in INVERTED_INDEX.values():
+            values.extend(location)
+        results = set(values)
+
+    return results
+
+
+def populate_inverted_index():
+    with open('inverted-index.csv', 'r') as file:
+        reader = csv.reader(file)
+        next(reader)
+
+        for row in reader:
+            values = row[1].replace("\n", "")
+            INVERTED_INDEX[row[0].lower()] = values.split("; ")
 
 
 def stt():
@@ -88,7 +130,17 @@ def stt():
         # DeepSpeech
         text = stt_stream.finishStream()
         print('Final text = {}'.format(text))
+        return text
 
 
 if __name__ == "__main__":
-    stt()
+    populate_inverted_index()
+
+    # final_text = stt()
+    # final = process_text(final_text)
+    # print(f'Choose one of the following {random.choices(list(final), k=3)}')
+
+    # for testing search only
+    final = process_text("I want to visit a park near the waterfront.")
+    # final = process_text("TAKE! ME! ANYWHERE!")
+    print(f'Choose one of the following {random.choices(list(final), k=3)}')
